@@ -7,19 +7,6 @@ import ClassIcon from '@/components/ClassIcon';
 import CharacterDetailModal, { type CharacterProfile } from '@/components/CharacterDetailModal';
 import RankingPaginationBar from '@/components/RankingPaginationBar';
 
-function isSameRankingData(a: CharacterRankingRow[], b: CharacterRankingRow[]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((item, i) => {
-    const o = b[i];
-    return (
-      o &&
-      item.character === o.character &&
-      item.score === o.score &&
-      (item.level ?? 0) === (o.level ?? 0)
-    );
-  });
-}
-
 interface RankingTableProps {
   title: string;
   endpoint: string;
@@ -55,7 +42,6 @@ export default function RankingTable({
   const [detailProfile, setDetailProfile] = useState<CharacterProfile | null>(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<RankingPagination | null>(null);
-  const lastDataRef = useRef<CharacterRankingRow[]>([]);
   const isMountedRef = useRef(true);
   const fetchIdRef = useRef(0);
   const [isClient, setIsClient] = useState(false);
@@ -112,15 +98,14 @@ export default function RankingTable({
   const fetchRankings = async (searchName?: string, requestId?: number, pageNum = 1) => {
     const activeRequestId = requestId ?? fetchIdRef.current;
     try {
-      const isInitial = lastDataRef.current.length === 0 && !searchName;
-      if (isInitial) setLoading(true);
+      setLoading(true);
       setIsSearching(!!searchName);
 
       const url = searchName
         ? `/api/characters/search?name=${encodeURIComponent(searchName)}`
         : `/api/rankings/${endpoint}?page=${pageNum}`;
 
-      const response = await fetch(url);
+      const response = await fetch(url, { cache: 'no-store' });
       const data = await response.json();
 
       if (!isMountedRef.current || activeRequestId !== fetchIdRef.current) return;
@@ -135,13 +120,6 @@ export default function RankingTable({
           setDataSource('cache');
         }
 
-        if (!searchName) {
-          setPagination(data.pagination ?? data.meta?.pagination ?? null);
-          setPage(pageNum);
-        } else {
-          setPagination(null);
-        }
-
         const newData: CharacterRankingRow[] = data.data.map((char: Record<string, unknown>) => ({
           account: String(char.account ?? char.AccountID ?? ''),
           character: String(char.character ?? char.Name ?? ''),
@@ -151,17 +129,24 @@ export default function RankingTable({
           isOnline: (char.isOnline ?? char.IsOnline ?? 0) as number | boolean,
         }));
 
-        if (!isSameRankingData(lastDataRef.current, newData)) {
-          lastDataRef.current = newData;
-          setCharacters(newData);
-        } else if (newData.length === 0) {
-          lastDataRef.current = newData;
-          setCharacters(newData);
+        // Luôn ghi đè list theo trang — không so sánh “giống dữ liệu cũ” (gây kẹt trang 1).
+        setCharacters(newData);
+
+        if (!searchName) {
+          const apiPag = (data.pagination ?? data.meta?.pagination) as RankingPagination | null;
+          setPagination(
+            apiPag
+              ? { ...apiPag, page: pageNum }
+              : { page: pageNum, limit: 50, total: newData.length, totalPages: 1 }
+          );
+          setPage(pageNum);
+        } else {
+          setPagination(null);
         }
+
         setIsSearchMode(!!searchName);
         setSearchMessage(searchName ? (data.message || null) : null);
-      } else if (!searchName && lastDataRef.current.length === 0) {
-        lastDataRef.current = SAMPLE_CHARACTERS;
+      } else if (!searchName && pageNum === 1) {
         setCharacters(SAMPLE_CHARACTERS);
         setSearchMessage(null);
       } else if (searchName) {
@@ -172,8 +157,7 @@ export default function RankingTable({
       }
     } catch {
       if (!isMountedRef.current || activeRequestId !== fetchIdRef.current) return;
-      if (!searchName && lastDataRef.current.length === 0) {
-        lastDataRef.current = SAMPLE_CHARACTERS;
+      if (!searchName && pageNum === 1) {
         setCharacters(SAMPLE_CHARACTERS);
       } else if (searchName) {
         setCharacters([]);
@@ -195,23 +179,24 @@ export default function RankingTable({
     setSearchMessage(null);
     setPage(1);
     setPagination(null);
-    lastDataRef.current = [];
     setCharacters([]);
     setLoading(true);
     fetchRankings(undefined, requestId, 1);
     return () => {
       isMountedRef.current = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ reload khi đổi tab ranking
   }, [endpoint]);
 
   const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage === page) return;
     const requestId = ++fetchIdRef.current;
-    setLoading(true);
+    setPage(nextPage);
     fetchRankings(undefined, requestId, nextPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const rankOffset = pagination ? (pagination.page - 1) * pagination.limit : 0;
+  const rankOffset = (page - 1) * (pagination?.limit ?? 50);
 
   return (
     <div>
@@ -321,7 +306,7 @@ export default function RankingTable({
           )}
           {!isSearchMode && (
             <RankingPaginationBar
-              pagination={pagination}
+              pagination={pagination ? { ...pagination, page } : null}
               onPageChange={handlePageChange}
               loading={loading}
             />

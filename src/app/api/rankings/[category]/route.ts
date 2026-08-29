@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { unstable_cache } from 'next/cache';
 import { securityMiddleware } from '@/lib/security-middleware';
 import { fetchRankingFromBackend, getRankingFallback } from '@/lib/ranking-api';
 import { getRankingTab, type RankingTabId } from '@/lib/rankings-config';
@@ -7,15 +6,11 @@ import { getRankingTab, type RankingTabId } from '@/lib/rankings-config';
 type RouteContext = { params: Promise<{ category: string }> };
 
 const RANKING_CACHE_HEADERS = {
-  'Cache-Control': 'public, s-maxage=90, stale-while-revalidate=180',
+  'Cache-Control': 'no-store, no-cache, must-revalidate',
 };
 
 function getCachedRanking(category: RankingTabId, page: number) {
-  return unstable_cache(
-    () => fetchRankingFromBackend(category, page),
-    ['ranking', category, String(page)],
-    { revalidate: 90 }
-  )();
+  return fetchRankingFromBackend(category, page);
 }
 
 function fallbackResponse(category: RankingTabId) {
