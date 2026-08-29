@@ -32,7 +32,7 @@ export function getLocalSiteConfig(): Record<string, unknown> {
       tiktok: s.linkTikTok,
     },
     bankTransfer: s.bankTransfer ?? {},
-    statsBoost: fromBackend?.statsBoost ?? s.statsBoost ?? {},
+    statsBoost: s.statsBoost ?? {},
     serverInfo: {
       name: s.serverName ?? s.nameGame,
       version: s.serverVersion ?? 'Season 1',
@@ -64,7 +64,9 @@ export function getLocalNewsArticle(slug: string): unknown | null {
   return article ?? null;
 }
 
-export function buildRemoteFallback(normalizedPath: string): { success: boolean; data: unknown } | null {
+export function buildRemoteFallback(
+  normalizedPath: string
+): { success: boolean; data: unknown; meta?: unknown } | null {
   const cfg = getLocalSiteConfig();
 
   if (normalizedPath === 'config') {
