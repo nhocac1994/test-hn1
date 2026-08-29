@@ -1,7 +1,7 @@
 // Backend API Configuration
 // URL của Backend API Server — đặt trong .env.local hoặc Vercel Environment Variables:
 // NEXT_PUBLIC_BACKEND_API_URL=https://your-backend-host:port
-const DEFAULT_BACKEND_URL = 'http://localhost:3001';
+const DEFAULT_BACKEND_URL = 'http://103.77.174.211:55666';
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');

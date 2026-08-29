@@ -53,6 +53,12 @@
     "events": true,
     "reset": true,
     "chaosMix": true
+  },
+  "statsBoost": {
+    "totalAccounts": 1245,
+    "totalCharacters": 6225,
+    "totalGuilds": 8,
+    "onlinePlayers": 116
   }
 }
 

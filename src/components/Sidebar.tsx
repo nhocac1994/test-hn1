@@ -5,6 +5,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import siteConfigStatic from '@/config/site.config.json';
 import { getSiteConfig, getEventsConfig, type SiteConfig, type EventConfig } from '@/lib/config-api';
+import {
+  mergeDisplayStats,
+  statsFromBoostOnly,
+  type StatsApiResponse,
+  type ServerStats,
+} from '@/lib/server-stats';
 import ClassIcon from '@/components/ClassIcon';
 
 interface PlayerRow {
@@ -78,6 +84,9 @@ export default function Sidebar() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [topPlayers, setTopPlayers] = useState<PlayerRow[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
+  const [statsApi, setStatsApi] = useState<StatsApiResponse | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
   const [events, setEvents] = useState<EventConfig[]>([]);
   const [now, setNow] = useState<Date | null>(null);
 
@@ -114,13 +123,49 @@ export default function Sidebar() {
       .finally(() => setRankLoading(false));
   }, []);
 
+  useEffect(() => {
+    const loadStats = () => {
+      fetch('/api/stats', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((data: StatsApiResponse) => {
+          if (data.success && data.data) {
+            setStatsApi(data);
+            setStatsError(false);
+          } else {
+            setStatsApi(null);
+            setStatsError(true);
+          }
+        })
+        .catch(() => {
+          setStatsApi(null);
+          setStatsError(true);
+        })
+        .finally(() => setStatsLoading(false));
+    };
+
+    loadStats();
+    const id = setInterval(loadStats, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const cfg = config;
+  const boost = cfg?.statsBoost ?? (siteConfigStatic as { statsBoost?: SiteConfig['statsBoost'] }).statsBoost;
+  const displayStats: ServerStats | null =
+    mergeDisplayStats(statsApi, boost) ?? statsFromBoostOnly(boost);
   const serverName = cfg?.serverName || cfg?.nameGame || 'Mu Online';
   const phone = cfg?.phone || 'Hotline';
   const zaloLink = cfg?.linkZalo || cfg?.socialMedia?.zalo || '#';
   const expRate = cfg?.serverInfo?.expRate || 'x100';
   const dropRate = cfg?.serverInfo?.dropRate || '50%';
   const version = cfg?.serverInfo?.version || cfg?.serverVersion || 'Season 1';
+  const standard = cfg?.serverInfo?.standard || 'Không hạ cấp';
+
+  const formatStat = (value: number) => value.toLocaleString('vi-VN');
+  const statCell = (value: number | undefined) => {
+    if (statsLoading) return '…';
+    if (value === undefined || !displayStats) return '—';
+    return formatStat(value);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,6 +286,10 @@ export default function Sidebar() {
                 <td className="we-val-orange">{version}</td>
               </tr>
               <tr>
+                <td>Chuẩn</td>
+                <td>{standard}</td>
+              </tr>
+              <tr>
                 <td>Kinh nghiệm</td>
                 <td className="we-val-blue">{expRate}</td>
               </tr>
@@ -248,8 +297,29 @@ export default function Sidebar() {
                 <td>Tỷ lệ rơi đồ</td>
                 <td>{dropRate}</td>
               </tr>
+              <tr>
+                <td>Tổng số Tài khoản</td>
+                <td>{statCell(displayStats?.totalAccounts)}</td>
+              </tr>
+              <tr>
+                <td>Tổng số Nhân vật</td>
+                <td>{statCell(displayStats?.totalCharacters)}</td>
+              </tr>
+              <tr>
+                <td>Tổng số Guilds</td>
+                <td>{statCell(displayStats?.totalGuilds)}</td>
+              </tr>
+              <tr>
+                <td>Số người Online</td>
+                <td className="we-val-green">{statCell(displayStats?.onlinePlayers)}</td>
+              </tr>
             </tbody>
           </table>
+          {statsError && !statsLoading && !displayStats && (
+            <p style={{ fontSize: 11, color: '#b45309', margin: '8px 0 0', textAlign: 'center' }}>
+              Chưa lấy được số liệu — cần cập nhật backend (API /api/stats)
+            </p>
+          )}
         </div>
       </div>
 

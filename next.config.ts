@@ -3,7 +3,7 @@ import path from "path";
 import type { NextConfig } from "next";
 
 /** Mặc định dev local — production/VPS: set NEXT_PUBLIC_BACKEND_API_URL trong .env.local hoặc Vercel */
-const DEFAULT_PUBLIC_BACKEND_API_URL = "http://localhost:3001";
+const DEFAULT_PUBLIC_BACKEND_API_URL = "http://199.119.136.131:55777";
 
 /**
  * Đọc NEXT_PUBLIC_BACKEND_API_URL trực tiếp từ file .env* trong project.

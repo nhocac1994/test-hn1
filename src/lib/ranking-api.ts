@@ -20,6 +20,13 @@ export type GuildRankingRow = {
   guildMark?: string | null;
 };
 
+export type RankingPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
 export type RankingMeta = {
   source: 'database' | 'fallback';
   category: RankingTabId;
@@ -27,6 +34,7 @@ export type RankingMeta = {
   rowCount?: number;
   reason?: string;
   triedUrls?: string[];
+  pagination?: RankingPagination;
 };
 
 const FETCH_TIMEOUT_MS = 8000;
@@ -39,10 +47,15 @@ type RankingFetchResult = {
   data: CharacterRankingRow[] | GuildRankingRow[];
   message?: string;
   meta: RankingMeta;
+  pagination?: RankingPagination;
 };
 
-const rankingCache = new Map<RankingTabId, { result: RankingFetchResult; fetchedAt: number }>();
-const rankingInflight = new Map<RankingTabId, Promise<RankingFetchResult>>();
+function cacheKey(category: RankingTabId, page: number) {
+  return `${category}:${page}`;
+}
+
+const rankingCache = new Map<string, { result: RankingFetchResult; fetchedAt: number }>();
+const rankingInflight = new Map<string, Promise<RankingFetchResult>>();
 
 function cloneRankingResult(result: RankingFetchResult, message?: string): RankingFetchResult {
   return {
@@ -89,12 +102,13 @@ function transformGuildRow(guild: Record<string, unknown>): GuildRankingRow {
   };
 }
 
-function getBackendCandidates(category: RankingTabId): string[] {
-  const primary = getBackendUrl(`/api/rankings/${category}`);
+function getBackendCandidates(category: RankingTabId, page: number): string[] {
+  const qs = page > 1 ? `?page=${page}` : '';
+  const primary = getBackendUrl(`/api/rankings/${category}${qs}`);
   const urls = [primary];
 
   const isDev = process.env.NODE_ENV === 'development';
-  const local = `http://127.0.0.1:3001/api/rankings/${category}`;
+  const local = `http://127.0.0.1:3001/api/rankings/${category}${qs}`;
   if (isDev && !primary.includes('127.0.0.1') && !primary.includes('localhost')) {
     urls.push(local);
   }
@@ -111,8 +125,8 @@ function formatFetchError(error: unknown): string {
   return String(error);
 }
 
-async function fetchRankingFromBackendOnce(category: RankingTabId): Promise<RankingFetchResult> {
-  const triedUrls = getBackendCandidates(category);
+async function fetchRankingFromBackendOnce(category: RankingTabId, page = 1): Promise<RankingFetchResult> {
+  const triedUrls = getBackendCandidates(category, page);
   const errors: string[] = [];
 
   for (const url of triedUrls) {
@@ -127,7 +141,12 @@ async function fetchRankingFromBackendOnce(category: RankingTabId): Promise<Rank
       });
 
       const bodyText = await backendResponse.text();
-      let backendData: { success?: boolean; data?: unknown; message?: string };
+      let backendData: {
+        success?: boolean;
+        data?: unknown;
+        message?: string;
+        pagination?: RankingPagination;
+      };
 
       try {
         backendData = JSON.parse(bodyText);
@@ -160,6 +179,7 @@ async function fetchRankingFromBackendOnce(category: RankingTabId): Promise<Rank
         backendUrl: url,
         rowCount,
         triedUrls,
+        pagination: backendData.pagination,
       };
 
       if (category === 'guild') {
@@ -168,6 +188,7 @@ async function fetchRankingFromBackendOnce(category: RankingTabId): Promise<Rank
           data: backendData.data.map((row: Record<string, unknown>) => transformGuildRow(row)),
           message: backendData.message ?? 'Lấy danh sách guild ranking từ database.',
           meta,
+          pagination: backendData.pagination,
         };
       }
 
@@ -176,6 +197,7 @@ async function fetchRankingFromBackendOnce(category: RankingTabId): Promise<Rank
         data: backendData.data.map((row: Record<string, unknown>) => transformCharacterRow(row)),
         message: backendData.message ?? 'Lấy danh sách ranking từ database.',
         meta,
+        pagination: backendData.pagination,
       };
     } catch (error) {
       const msg = `${url} → ${formatFetchError(error)}`;
@@ -204,27 +226,27 @@ async function fetchRankingFromBackendOnce(category: RankingTabId): Promise<Rank
   };
 }
 
-export async function fetchRankingFromBackend(category: RankingTabId): Promise<RankingFetchResult> {
+export async function fetchRankingFromBackend(category: RankingTabId, page = 1): Promise<RankingFetchResult> {
   const now = Date.now();
-  const cached = rankingCache.get(category);
+  const key = cacheKey(category, page);
+  const cached = rankingCache.get(key);
 
   if (cached && now - cached.fetchedAt < CACHE_TTL_MS) {
     return cloneRankingResult(cached.result);
   }
 
-  const inflight = rankingInflight.get(category);
+  const inflight = rankingInflight.get(key);
   if (inflight) {
     return inflight;
   }
 
-  const request = fetchRankingFromBackendOnce(category)
+  const request = fetchRankingFromBackendOnce(category, page)
     .then((result) => {
       if (result.meta.source === 'database') {
-        rankingCache.set(category, { result, fetchedAt: Date.now() });
+        rankingCache.set(key, { result, fetchedAt: Date.now() });
         return result;
       }
 
-      // Backend lỗi (429/500…) — ưu tiên cache DB cũ
       if (cached && now - cached.fetchedAt < STALE_TTL_MS && cached.result.meta.source === 'database') {
         console.warn(
           `[ranking/${category}] Backend lỗi (${result.meta.reason ?? 'unknown'}) — dùng cache ${cached.result.data.length} dòng`
@@ -235,19 +257,18 @@ export async function fetchRankingFromBackend(category: RankingTabId): Promise<R
         );
       }
 
-      // Cache fallback ngắn để tránh spam VPS khi user đổi tab liên tục
       if (cached && now - cached.fetchedAt < FALLBACK_CACHE_TTL_MS) {
         return cloneRankingResult(cached.result, result.message);
       }
 
-      rankingCache.set(category, { result, fetchedAt: Date.now() });
+      rankingCache.set(key, { result, fetchedAt: Date.now() });
       return result;
     })
     .finally(() => {
-      rankingInflight.delete(category);
+      rankingInflight.delete(key);
     });
 
-  rankingInflight.set(category, request);
+  rankingInflight.set(key, request);
   return request;
 }
 

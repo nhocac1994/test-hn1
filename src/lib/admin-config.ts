@@ -22,6 +22,7 @@ export interface ConfigFormState {
   websiteName: string;
   expRate: string;
   dropRate: string;
+  standard: string;
   mediafire: string;
   mega: string;
   clientVersion: string;
@@ -35,6 +36,10 @@ export interface ConfigFormState {
   bankName: string;
   qrCodeUrl: string;
   events: EventFormItem[];
+  boostAccounts: string;
+  boostCharacters: string;
+  boostGuilds: string;
+  boostOnline: string;
 }
 
 export const emptyConfigForm = (): ConfigFormState => ({
@@ -50,6 +55,7 @@ export const emptyConfigForm = (): ConfigFormState => ({
   websiteName: '',
   expRate: 'x100',
   dropRate: 'x50',
+  standard: 'Không hạ cấp',
   mediafire: '',
   mega: '',
   clientVersion: 'V1.1',
@@ -63,6 +69,10 @@ export const emptyConfigForm = (): ConfigFormState => ({
   bankName: '',
   qrCodeUrl: '',
   events: [],
+  boostAccounts: '0',
+  boostCharacters: '0',
+  boostGuilds: '0',
+  boostOnline: '0',
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,6 +81,7 @@ export function configToFormState(raw: Record<string, any>): ConfigFormState {
   const dl = raw.downloadLinks ?? {};
   const bank = raw.bankTransfer ?? {};
   const si = raw.serverInfo ?? {};
+  const boost = raw.statsBoost ?? {};
   const events: EventFormItem[] = (raw.events ?? []).map((e: Record<string, unknown>) => {
     const sch = (e.schedule ?? {}) as Record<string, unknown>;
     const type = sch.type === 'specific' ? 'specific' : 'hourly';
@@ -100,6 +111,11 @@ export function configToFormState(raw: Record<string, any>): ConfigFormState {
     websiteName: String(raw.websiteName ?? ''),
     expRate: String(si.expRate ?? raw.expRate ?? 'x100'),
     dropRate: String(si.dropRate ?? raw.dropRate ?? 'x50'),
+    standard: String(si.standard ?? raw.standard ?? 'Không hạ cấp'),
+    boostAccounts: String(boost.totalAccounts ?? 0),
+    boostCharacters: String(boost.totalCharacters ?? 0),
+    boostGuilds: String(boost.totalGuilds ?? 0),
+    boostOnline: String(boost.onlinePlayers ?? 0),
     mediafire: String(dl.mediafire ?? ''),
     mega: String(dl.mega ?? ''),
     clientVersion: String(dl.clientVersion ?? 'V1.1'),
@@ -174,8 +190,15 @@ export function formStateToConfig(form: ConfigFormState): Record<string, unknown
     serverInfo: {
       name: serverName,
       version: form.serverVersion,
+      standard: form.standard,
       expRate: form.expRate,
       dropRate: form.dropRate,
+    },
+    statsBoost: {
+      totalAccounts: Number(form.boostAccounts) || 0,
+      totalCharacters: Number(form.boostCharacters) || 0,
+      totalGuilds: Number(form.boostGuilds) || 0,
+      onlinePlayers: Number(form.boostOnline) || 0,
     },
   };
 }

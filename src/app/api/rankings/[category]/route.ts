@@ -10,10 +10,10 @@ const RANKING_CACHE_HEADERS = {
   'Cache-Control': 'public, s-maxage=90, stale-while-revalidate=180',
 };
 
-function getCachedRanking(category: RankingTabId) {
+function getCachedRanking(category: RankingTabId, page: number) {
   return unstable_cache(
-    () => fetchRankingFromBackend(category),
-    ['ranking', category],
+    () => fetchRankingFromBackend(category, page),
+    ['ranking', category, String(page)],
     { revalidate: 90 }
   )();
 }
@@ -58,7 +58,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const result = await getCachedRanking(category as RankingTabId);
+    const page = Math.max(1, parseInt(request.nextUrl.searchParams.get('page') || '1', 10) || 1);
+    const result = await getCachedRanking(category as RankingTabId, page);
     return NextResponse.json(result, { headers: RANKING_CACHE_HEADERS });
   } catch (error) {
     console.error(`[ranking/${category}] Exception:`, error);

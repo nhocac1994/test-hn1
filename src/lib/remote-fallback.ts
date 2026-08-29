@@ -32,6 +32,7 @@ export function getLocalSiteConfig(): Record<string, unknown> {
       tiktok: s.linkTikTok,
     },
     bankTransfer: s.bankTransfer ?? {},
+    statsBoost: fromBackend?.statsBoost ?? s.statsBoost ?? {},
     serverInfo: {
       name: s.serverName ?? s.nameGame,
       version: s.serverVersion ?? 'Season 1',
@@ -83,6 +84,19 @@ export function buildRemoteFallback(normalizedPath: string): { success: boolean;
   }
   if (normalizedPath === 'config/server') {
     return { success: true, data: cfg.serverInfo ?? {} };
+  }
+  if (normalizedPath === 'stats') {
+    const zero = {
+      totalAccounts: 0,
+      totalCharacters: 0,
+      totalGuilds: 0,
+      onlinePlayers: 0,
+    };
+    return {
+      success: true,
+      data: zero,
+      meta: { real: zero, dbError: true },
+    };
   }
   if (normalizedPath === 'news') {
     return { success: true, data: getLocalNewsList() };

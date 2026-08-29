@@ -41,7 +41,7 @@ export default function RankingsPage() {
                 title={current.label}
                 endpoint={current.id}
                 scoreLabel={current.scoreLabel}
-                enableSearch={current.id === 'level'}
+                enableSearch={current.type === 'character'}
                 embedded
               />
             )}

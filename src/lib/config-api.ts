@@ -63,9 +63,24 @@ export interface BankTransfer {
   qrCodeUrl: string;
 }
 
+export interface StatsBoost {
+  totalAccounts?: number;
+  totalCharacters?: number;
+  totalGuilds?: number;
+  onlinePlayers?: number;
+}
+
+export interface ServerStats {
+  totalAccounts: number;
+  totalCharacters: number;
+  totalGuilds: number;
+  onlinePlayers: number;
+}
+
 export interface ServerInfo {
   name: string;
   version: string;
+  standard?: string;
   expRate: string;
   dropRate: string;
 }
@@ -91,6 +106,7 @@ export interface SiteConfig {
   socialMedia: SocialMedia;
   bankTransfer: BankTransfer;
   serverInfo: ServerInfo;
+  statsBoost?: StatsBoost;
 }
 
 /**
@@ -119,6 +135,33 @@ export async function getSiteConfig(): Promise<SiteConfig | null> {
         linkYoutube: data.linkYoutube ?? data.socialMedia?.youtube,
         linkZalo: data.linkZalo ?? data.socialMedia?.zalo,
         linkTikTok: data.linkTikTok ?? data.socialMedia?.tiktok,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Thống kê server từ DB (tài khoản, nhân vật, guild, online)
+ */
+export async function getServerStats(): Promise<ServerStats | null> {
+  try {
+    const proxyPath = '/api/remote/stats';
+    const url = isBrowser() ? proxyPath : `${getAppOriginForServerFetch()}${proxyPath}`;
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!response.ok) return null;
+    const result = await response.json();
+    if (result.success && result.data) {
+      return {
+        totalAccounts: Number(result.data.totalAccounts ?? 0),
+        totalCharacters: Number(result.data.totalCharacters ?? 0),
+        totalGuilds: Number(result.data.totalGuilds ?? 0),
+        onlinePlayers: Number(result.data.onlinePlayers ?? result.data.onlineCount ?? 0),
       };
     }
     return null;

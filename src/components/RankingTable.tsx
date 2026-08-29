@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { RANKING_LEVEL_FALLBACK } from '@/lib/ranking-fallback-data';
-import type { CharacterRankingRow } from '@/lib/ranking-api';
+import type { CharacterRankingRow, RankingPagination } from '@/lib/ranking-api';
 import ClassIcon from '@/components/ClassIcon';
+import CharacterDetailModal, { type CharacterProfile } from '@/components/CharacterDetailModal';
+import RankingPaginationBar from '@/components/RankingPaginationBar';
 
 function isSameRankingData(a: CharacterRankingRow[], b: CharacterRankingRow[]): boolean {
   if (a.length !== b.length) return false;
@@ -46,11 +48,68 @@ export default function RankingTable({
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [dataSource, setDataSource] = useState<'database' | 'fallback' | 'cache' | null>(null);
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailProfile, setDetailProfile] = useState<CharacterProfile | null>(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<RankingPagination | null>(null);
   const lastDataRef = useRef<CharacterRankingRow[]>([]);
   const isMountedRef = useRef(true);
   const fetchIdRef = useRef(0);
+  const [isClient, setIsClient] = useState(false);
 
-  const fetchRankings = async (searchName?: string, requestId?: number) => {
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const closeDetail = () => {
+    setDetailOpen(false);
+    setDetailLoading(false);
+    setDetailError(null);
+    setDetailProfile(null);
+  };
+
+  const openCharacterDetail = async (char: CharacterRankingRow) => {
+    if (!char.account || !char.character) {
+      setDetailError('Không đủ thông tin để xem chi tiết nhân vật.');
+      setDetailOpen(true);
+      return;
+    }
+
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetailProfile(null);
+
+    const isOnline = char.isOnline === 1 || char.isOnline === true;
+
+    try {
+      const params = new URLSearchParams({
+        accountId: char.account,
+        name: char.character,
+      });
+      const response = await fetch(`/api/characters/profile?${params.toString()}`, { cache: 'no-store' });
+      const data = await response.json();
+
+      if (!response.ok || !data.success || !data.data) {
+        setDetailError(data.message || 'Không lấy được thông tin nhân vật.');
+        return;
+      }
+
+      setDetailProfile({
+        ...data.data,
+        isOnline,
+      });
+    } catch {
+      setDetailError('Lỗi kết nối. Vui lòng thử lại sau.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const fetchRankings = async (searchName?: string, requestId?: number, pageNum = 1) => {
     const activeRequestId = requestId ?? fetchIdRef.current;
     try {
       const isInitial = lastDataRef.current.length === 0 && !searchName;
@@ -59,7 +118,7 @@ export default function RankingTable({
 
       const url = searchName
         ? `/api/characters/search?name=${encodeURIComponent(searchName)}`
-        : `/api/rankings/${endpoint}`;
+        : `/api/rankings/${endpoint}?page=${pageNum}`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -74,6 +133,13 @@ export default function RankingTable({
           setDataSource('fallback');
         } else if (data.message?.includes('cache')) {
           setDataSource('cache');
+        }
+
+        if (!searchName) {
+          setPagination(data.pagination ?? data.meta?.pagination ?? null);
+          setPage(pageNum);
+        } else {
+          setPagination(null);
         }
 
         const newData: CharacterRankingRow[] = data.data.map((char: Record<string, unknown>) => ({
@@ -93,11 +159,16 @@ export default function RankingTable({
           setCharacters(newData);
         }
         setIsSearchMode(!!searchName);
+        setSearchMessage(searchName ? (data.message || null) : null);
       } else if (!searchName && lastDataRef.current.length === 0) {
         lastDataRef.current = SAMPLE_CHARACTERS;
         setCharacters(SAMPLE_CHARACTERS);
+        setSearchMessage(null);
       } else if (searchName) {
         setCharacters([]);
+        setPagination(null);
+        setIsSearchMode(true);
+        setSearchMessage(data.message || `Không tìm thấy nhân vật "${searchName}"`);
       }
     } catch {
       if (!isMountedRef.current || activeRequestId !== fetchIdRef.current) return;
@@ -121,26 +192,68 @@ export default function RankingTable({
     setSearchTerm('');
     setIsSearchMode(false);
     setDataSource(null);
+    setSearchMessage(null);
+    setPage(1);
+    setPagination(null);
     lastDataRef.current = [];
     setCharacters([]);
     setLoading(true);
-    fetchRankings(undefined, requestId);
+    fetchRankings(undefined, requestId, 1);
     return () => {
       isMountedRef.current = false;
     };
   }, [endpoint]);
 
+  const handlePageChange = (nextPage: number) => {
+    const requestId = ++fetchIdRef.current;
+    setLoading(true);
+    fetchRankings(undefined, requestId, nextPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const rankOffset = pagination ? (pagination.page - 1) * pagination.limit : 0;
+
   return (
     <div>
-      {enableSearch && (
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && fetchRankings(searchTerm.trim() || undefined)}
-          placeholder="Gõ tên nhân vật để lọc nhanh trong danh sách..."
-          className="we-rank-search"
-        />
+      {enableSearch && isClient && (
+        <div className="we-rank-search-row">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && fetchRankings(searchTerm.trim() || undefined)}
+            placeholder="Tìm nhân vật trên toàn server — Enter để tìm"
+            className="we-rank-search"
+          />
+          <button
+            type="button"
+            className="we-btn we-rank-search-btn"
+            onClick={() => fetchRankings(searchTerm.trim() || undefined)}
+            disabled={!searchTerm.trim() || isSearching}
+          >
+            {isSearching ? 'Đang tìm…' : 'Tìm'}
+          </button>
+          {isSearchMode && (
+            <button
+              type="button"
+              className="we-btn we-rank-search-clear"
+              onClick={() => {
+                setSearchTerm('');
+                setPage(1);
+                fetchRankings(undefined, undefined, 1);
+              }}
+            >
+              Bảng xếp hạng
+            </button>
+          )}
+        </div>
+      )}
+
+      {isSearchMode && !loading && (
+        <p style={{ fontSize: 12, color: '#666', margin: '0 0 10px', textAlign: 'center' }}>
+          {searchMessage ||
+            'Kết quả tìm kiếm toàn server — tìm được mọi nhân vật trong database.'}
+        </p>
       )}
 
       {dataSource === 'fallback' && (
@@ -173,16 +286,23 @@ export default function RankingTable({
             <tbody>
               {characters.map((char, index) => (
                 <tr key={`${char.account}-${char.character}`}>
-                  <td>{index + 1}</td>
+                  <td>{rankOffset + index + 1}</td>
                   <td>🇻🇳</td>
                   <td>
                     <ClassIcon classId={char.class} />
                   </td>
                   <td className="char-name">
-                    {char.character}
-                    <span
-                      className={`we-status-dot ${char.isOnline === 1 || char.isOnline === true ? 'we-status-online' : 'we-status-offline'}`}
-                    />
+                    <button
+                      type="button"
+                      className="we-char-name-btn"
+                      onClick={() => openCharacterDetail(char)}
+                      title={`Xem thông tin ${char.character}`}
+                    >
+                      {char.character}
+                      <span
+                        className={`we-status-dot ${char.isOnline === 1 || char.isOnline === true ? 'we-status-online' : 'we-status-offline'}`}
+                      />
+                    </button>
                   </td>
                   <td>{char.level ?? '—'}</td>
                   <td style={{ fontWeight: 700 }}>{char.score.toLocaleString()}</td>
@@ -199,8 +319,23 @@ export default function RankingTable({
                   : 'Chưa có dữ liệu xếp hạng — thử tải lại trang sau vài giây.'}
             </p>
           )}
+          {!isSearchMode && (
+            <RankingPaginationBar
+              pagination={pagination}
+              onPageChange={handlePageChange}
+              loading={loading}
+            />
+          )}
         </div>
       )}
+
+      <CharacterDetailModal
+        open={detailOpen}
+        loading={detailLoading}
+        error={detailError}
+        profile={detailProfile}
+        onClose={closeDetail}
+      />
     </div>
   );
 }

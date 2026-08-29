@@ -123,9 +123,24 @@ export default function ConfigEditor({
           <Field label="Tên hiển thị server" value={form.serverName} onChange={(v) => set('serverName', v)} />
           <Field label="Tiêu đề game" value={form.gameTitle} onChange={(v) => set('gameTitle', v)} />
           <Field label="Phiên bản" value={form.serverVersion} onChange={(v) => set('serverVersion', v)} />
+          <Field label="Chuẩn" value={form.standard} onChange={(v) => set('standard', v)} placeholder="Không hạ cấp" />
           <Field label="Slogan / mô tả ngắn" value={form.gameSubtitle} onChange={(v) => set('gameSubtitle', v)} />
           <Field label="Tỷ lệ EXP" value={form.expRate} onChange={(v) => set('expRate', v)} placeholder="x100" />
           <Field label="Tỷ lệ Drop" value={form.dropRate} onChange={(v) => set('dropRate', v)} placeholder="x50" />
+        </div>
+      </section>
+
+      <section className={sectionClass}>
+        <h3 className="text-sm font-bold text-purple-300">Tỷ lệ hiển thị thống kê (statsBoost)</h3>
+        <p className="text-xs text-zinc-400">Số cộng thêm vào thống kê thật từ DB khi hiển thị web.</p>
+        <p className="text-xs text-gray-400 mb-3">
+          Cộng thêm vào số liệu DB khi hiển thị Sidebar (cả 4 chỉ số).
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Cộng thêm Tài khoản" value={form.boostAccounts} onChange={(v) => set('boostAccounts', v)} />
+          <Field label="Cộng thêm Nhân vật" value={form.boostCharacters} onChange={(v) => set('boostCharacters', v)} />
+          <Field label="Cộng thêm Guilds" value={form.boostGuilds} onChange={(v) => set('boostGuilds', v)} />
+          <Field label="Cộng thêm Online" value={form.boostOnline} onChange={(v) => set('boostOnline', v)} />
         </div>
       </section>
 

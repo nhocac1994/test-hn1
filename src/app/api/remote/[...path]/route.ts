@@ -10,6 +10,7 @@ const ALLOWED_GET_PATHS = new Set([
   'config/social',
   'config/bank',
   'config/server',
+  'stats',
 ]);
 
 function isNewsGetPath(normalized: string): boolean {

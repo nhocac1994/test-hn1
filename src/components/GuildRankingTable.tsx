@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { RANKING_GUILD_FALLBACK } from '@/lib/ranking-fallback-data';
+import type { RankingPagination } from '@/lib/ranking-api';
+import RankingPaginationBar from '@/components/RankingPaginationBar';
 
 function isSameGuildData(a: GuildRank[], b: GuildRank[]): boolean {
   if (a.length !== b.length) return false;
@@ -32,18 +34,20 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<'database' | 'fallback' | 'cache' | null>(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<RankingPagination | null>(null);
   const [isAddingSample, setIsAddingSample] = useState(false);
   const lastDataRef = useRef<GuildRank[]>([]);
   const isMountedRef = useRef(true);
   const fetchIdRef = useRef(0);
 
-  const fetchGuildRankings = async (requestId?: number) => {
+  const fetchGuildRankings = async (requestId?: number, pageNum = 1) => {
     const activeRequestId = requestId ?? fetchIdRef.current;
     try {
       const isInitial = lastDataRef.current.length === 0;
       if (isInitial) setLoading(true);
 
-      const response = await fetch(`/api/rankings/${endpoint}`);
+      const response = await fetch(`/api/rankings/${endpoint}?page=${pageNum}`);
       const data = await response.json();
 
       if (!isMountedRef.current || activeRequestId !== fetchIdRef.current) return;
@@ -53,6 +57,9 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
         if (metaSource === 'database') setDataSource('database');
         else if (data.message?.includes('cache')) setDataSource('cache');
         else if (metaSource === 'fallback') setDataSource('fallback');
+
+        setPagination(data.pagination ?? data.meta?.pagination ?? null);
+        setPage(pageNum);
 
         const newData = data.data;
         if (!isSameGuildData(lastDataRef.current, newData)) {
@@ -109,10 +116,21 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
     lastDataRef.current = [];
     setGuilds([]);
     setDataSource(null);
+    setPage(1);
+    setPagination(null);
     setLoading(true);
-    fetchGuildRankings(requestId);
+    fetchGuildRankings(requestId, 1);
     return () => { isMountedRef.current = false; };
   }, [endpoint]);
+
+  const handlePageChange = (nextPage: number) => {
+    const requestId = ++fetchIdRef.current;
+    setLoading(true);
+    fetchGuildRankings(requestId, nextPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const rankOffset = pagination ? (pagination.page - 1) * pagination.limit : 0;
 
   const getRankIcon = (index: number) => {
     if (index === 0) return '🥇';
@@ -192,7 +210,7 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
         <tbody>
           {guilds.map((guild, index) => (
             <tr key={guild.guildName}>
-              <td>{index + 1}</td>
+              <td>{rankOffset + index + 1}</td>
               <td>{getGuildLogo(guild)}</td>
               <td className="char-name">{guild.guildName || '—'}</td>
               <td>{guild.guildMaster || '—'}</td>
@@ -208,6 +226,12 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
           Chưa có dữ liệu guild
         </p>
       )}
+
+      <RankingPaginationBar
+        pagination={pagination}
+        onPageChange={handlePageChange}
+        loading={loading}
+      />
     </div>
   );
 }
