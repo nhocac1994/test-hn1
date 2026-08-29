@@ -103,7 +103,7 @@ function transformGuildRow(guild: Record<string, unknown>): GuildRankingRow {
 }
 
 function getBackendCandidates(category: RankingTabId, page: number): string[] {
-  const qs = page > 1 ? `?page=${page}` : '';
+  const qs = `?page=${Math.max(1, page)}`;
   const primary = getBackendUrl(`/api/rankings/${category}${qs}`);
   const urls = [primary];
 
@@ -226,18 +226,25 @@ async function fetchRankingFromBackendOnce(category: RankingTabId, page = 1): Pr
   };
 }
 
-export async function fetchRankingFromBackend(category: RankingTabId, page = 1): Promise<RankingFetchResult> {
+export async function fetchRankingFromBackend(
+  category: RankingTabId,
+  page = 1,
+  options?: { bypassCache?: boolean }
+): Promise<RankingFetchResult> {
   const now = Date.now();
   const key = cacheKey(category, page);
-  const cached = rankingCache.get(key);
+  const bypassCache = options?.bypassCache === true;
+  const cached = bypassCache ? undefined : rankingCache.get(key);
 
   if (cached && now - cached.fetchedAt < CACHE_TTL_MS) {
     return cloneRankingResult(cached.result);
   }
 
-  const inflight = rankingInflight.get(key);
-  if (inflight) {
-    return inflight;
+  if (!bypassCache) {
+    const inflight = rankingInflight.get(key);
+    if (inflight) {
+      return inflight;
+    }
   }
 
   const request = fetchRankingFromBackendOnce(category, page)
@@ -268,7 +275,9 @@ export async function fetchRankingFromBackend(category: RankingTabId, page = 1):
       rankingInflight.delete(key);
     });
 
-  rankingInflight.set(key, request);
+  if (!bypassCache) {
+    rankingInflight.set(key, request);
+  }
   return request;
 }
 

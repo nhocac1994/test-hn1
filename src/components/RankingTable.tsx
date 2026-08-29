@@ -103,9 +103,12 @@ export default function RankingTable({
 
       const url = searchName
         ? `/api/characters/search?name=${encodeURIComponent(searchName)}`
-        : `/api/rankings/${endpoint}?page=${pageNum}`;
+        : `/api/rankings/${endpoint}?page=${pageNum}&_ts=${Date.now()}`;
 
-      const response = await fetch(url, { cache: 'no-store' });
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      });
       const data = await response.json();
 
       if (!isMountedRef.current || activeRequestId !== fetchIdRef.current) return;
@@ -129,17 +132,17 @@ export default function RankingTable({
           isOnline: (char.isOnline ?? char.IsOnline ?? 0) as number | boolean,
         }));
 
-        // Luôn ghi đè list theo trang — không so sánh “giống dữ liệu cũ” (gây kẹt trang 1).
         setCharacters(newData);
 
         if (!searchName) {
           const apiPag = (data.pagination ?? data.meta?.pagination) as RankingPagination | null;
+          const resolvedPage = apiPag?.page && apiPag.page > 0 ? apiPag.page : pageNum;
           setPagination(
             apiPag
-              ? { ...apiPag, page: pageNum }
+              ? { ...apiPag, page: resolvedPage }
               : { page: pageNum, limit: 50, total: newData.length, totalPages: 1 }
           );
-          setPage(pageNum);
+          setPage(resolvedPage);
         } else {
           setPagination(null);
         }
@@ -189,9 +192,9 @@ export default function RankingTable({
   }, [endpoint]);
 
   const handlePageChange = (nextPage: number) => {
-    if (nextPage < 1 || nextPage === page) return;
+    if (nextPage < 1 || nextPage === page || loading) return;
     const requestId = ++fetchIdRef.current;
-    setPage(nextPage);
+    // Không setPage trước — tránh #51… mà vẫn tên trang 1 khi API chậm/cache
     fetchRankings(undefined, requestId, nextPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -270,7 +273,7 @@ export default function RankingTable({
             </thead>
             <tbody>
               {characters.map((char, index) => (
-                <tr key={`${char.account}-${char.character}`}>
+                <tr key={`p${page}-${rankOffset + index}-${char.account}-${char.character}`}>
                   <td>{rankOffset + index + 1}</td>
                   <td>🇻🇳</td>
                   <td>

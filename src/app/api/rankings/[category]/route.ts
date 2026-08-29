@@ -3,15 +3,12 @@ import { securityMiddleware } from '@/lib/security-middleware';
 import { fetchRankingFromBackend, getRankingFallback } from '@/lib/ranking-api';
 import { getRankingTab, type RankingTabId } from '@/lib/rankings-config';
 
+/** Bắt buộc dynamic — không cache response theo path (tránh page=2 nhận data page=1) */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
 type RouteContext = { params: Promise<{ category: string }> };
-
-const RANKING_CACHE_HEADERS = {
-  'Cache-Control': 'no-store, no-cache, must-revalidate',
-};
-
-function getCachedRanking(category: RankingTabId, page: number) {
-  return fetchRankingFromBackend(category, page);
-}
 
 function fallbackResponse(category: RankingTabId) {
   const tab = getRankingTab(category);
@@ -54,8 +51,35 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const page = Math.max(1, parseInt(request.nextUrl.searchParams.get('page') || '1', 10) || 1);
-    const result = await getCachedRanking(category as RankingTabId, page);
-    return NextResponse.json(result, { headers: RANKING_CACHE_HEADERS });
+    const result = await fetchRankingFromBackend(category as RankingTabId, page, { bypassCache: true });
+
+    // Đảm bảo client nhận đúng số trang đã request (kèm data của trang đó)
+    const payload = {
+      ...result,
+      data: Array.isArray(result.data) ? [...result.data] : result.data,
+      pagination: result.pagination
+        ? { ...result.pagination, page }
+        : result.meta?.pagination
+          ? { ...result.meta.pagination, page }
+          : undefined,
+      meta: {
+        ...result.meta,
+        pagination: result.pagination
+          ? { ...result.pagination, page }
+          : result.meta?.pagination
+            ? { ...result.meta.pagination, page }
+            : undefined,
+      },
+    };
+
+    return NextResponse.json(payload, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        Expires: '0',
+        Vary: 'Accept-Encoding',
+      },
+    });
   } catch (error) {
     console.error(`[ranking/${category}] Exception:`, error);
     return fallbackResponse(category as RankingTabId);

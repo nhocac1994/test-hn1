@@ -37,7 +37,10 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
     try {
       setLoading(true);
 
-      const response = await fetch(`/api/rankings/${endpoint}?page=${pageNum}`, { cache: 'no-store' });
+      const response = await fetch(`/api/rankings/${endpoint}?page=${pageNum}&_ts=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      });
       const data = await response.json();
 
       if (!isMountedRef.current || activeRequestId !== fetchIdRef.current) return;
@@ -52,12 +55,13 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
         setGuilds(newData);
 
         const apiPag = (data.pagination ?? data.meta?.pagination) as RankingPagination | null;
+        const resolvedPage = apiPag?.page && apiPag.page > 0 ? apiPag.page : pageNum;
         setPagination(
           apiPag
-            ? { ...apiPag, page: pageNum }
+            ? { ...apiPag, page: resolvedPage }
             : { page: pageNum, limit: 50, total: newData.length, totalPages: 1 }
         );
-        setPage(pageNum);
+        setPage(resolvedPage);
         setError(null);
       } else if (pageNum === 1) {
         setError(null);
@@ -111,9 +115,8 @@ export default function GuildRankingTable({ title, endpoint, embedded }: GuildRa
   }, [endpoint]);
 
   const handlePageChange = (nextPage: number) => {
-    if (nextPage < 1 || nextPage === page) return;
+    if (nextPage < 1 || nextPage === page || loading) return;
     const requestId = ++fetchIdRef.current;
-    setPage(nextPage);
     fetchGuildRankings(requestId, nextPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
